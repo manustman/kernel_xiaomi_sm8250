@@ -58,20 +58,19 @@ jobs:
         run: |
           export PATH="$(pwd)/clang/bin:$PATH"
 
-          MAKE_ARGS=(
-            ARCH=arm64
-            SUBARCH=arm64
-            CC=clang
-            CLANG_TRIPLE=aarch64-linux-gnu-
-            CROSS_COMPILE=aarch64-linux-gnu-
-            LLVM=1
-            LLVM_IAS=1
-            KCONFIG_CONFIG=.config
-            )
+          # Базовое окружение Kbuild
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CC=clang
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export LLVM=1
+          export LLVM_IAS=1
 
-          make "${MAKE_ARGS[@]}" alioth_defconfig
-          make "${MAKE_ARGS[@]}" olddefconfig
-          make -j$(nproc --all) "${MAKE_ARGS[@]}" Image dtbs dtbo.img
+          # Сборка через директорию out/
+          make O=out alioth_defconfig
+          make O=out olddefconfig
+          make -j$(nproc --all) O=out Image dtbs dtbo.img
 
       - name: Поиск и объединение DTB файлов
         run: |
