@@ -75,30 +75,55 @@ jobs:
       - name: Поиск и объединение DTB файлов
         run: |
           mkdir -p out_dtb
-          find arch/arm64/boot/dts/ -type f -name "*.dtb" -exec cp {} out_dtb/ \;
-          cat out_dtb/*.dtb > out_dtb/dtb
-          ls -lh out_dtb/dtb
+
+          # Ищем ВСЕ файлы .dtb по всему репозиторию, кроме итогового out_dtb/dtb
+          find . -type f -name "*.dtb" ! -path "*/out_dtb/*" -exec cp {} out_dtb/ \;
+
+          # Проверяем, скопировалось ли хоть что-то
+          if ls out_dtb/*.dtb 1> /dev/null 2>&1; then
+            cat out_dtb/*.dtb > out_dtb/dtb
+            echo "DTB успешно найдены и объединены:"
+            ls -lh out_dtb/dtb
+          else
+            echo "ВНИМАНИЕ: Ни одного .dtb файла не найдено во всем проекте!"
+          fi
 
       - name: Упаковка артефактов в ZIP
         run: |
           mkdir -p build_artifacts
 
-          if [ -f arch/arm64/boot/Image ]; then
-            cp arch/arm64/boot/Image build_artifacts/
-          elif [ -f arch/arm64/boot/Image.gz ]; then
-            cp arch/arm64/boot/Image.gz build_artifacts/
+          # 1. Поиск ядра (Image / Image.gz / Image.gz-dtb / Image-dtb) во всех папках
+          IMAGE_FILE=$(find . -type f \( -name "Image" -o -name "Image.gz" -o -name "Image.gz-dtb" -o -name "Image-dtb" \) | head -n 1)
+          if [ -n "$IMAGE_FILE" ]; then
+            echo "Найдено ядро: $IMAGE_FILE"
+            cp "$IMAGE_FILE" build_artifacts/
+          else
+            echo "ВНИМАНИЕ: Файл ядра не найден!"
           fi
 
-          if [ -f arch/arm64/boot/dtbo.img ]; then
-            cp arch/arm64/boot/dtbo.img build_artifacts/
+          # 2. Поиск dtbo.img во всех папках
+          DTBO_FILE=$(find . -type f -name "dtbo.img" | head -n 1)
+          if [ -n "$DTBO_FILE" ]; then
+            echo "Найден DTBO: $DTBO_FILE"
+            cp "$DTBO_FILE" build_artifacts/
+          else
+            echo "ПРЕДУПРЕЖДЕНИЕ: dtbo.img не найден!"
           fi
 
+          # 3. Копирование собранного DTB (из прошлого шага)
           if [ -f out_dtb/dtb ]; then
             cp out_dtb/dtb build_artifacts/
           fi
 
+          # 4. Проверяем, набрались ли хоть какие-то артефакты перед архивацией
           cd build_artifacts
-          zip -r ../kernel-alioth-$(date +%Y%m%d-%H%M).zip ./*
+          if [ -n "$(ls -A)" ]; then
+            zip -r ../kernel-alioth-$(date +%Y%m%d-%H%M).zip ./*
+            echo "Артефакты успешно запакованы в ZIP!"
+          else
+            echo "ОШИБКА: Не найдено ни одного артефакта для упаковывания!"
+            exit 1
+          fi
           cd ..
 
       - name: Отправка артефакта в GitHub Actions
