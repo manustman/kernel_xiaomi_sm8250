@@ -34,8 +34,10 @@ jobs:
 
       - name: Загрузка и размещение mkdtboimg
         run: |
-          wget -q https://android.googlesource.com/platform/system/libufdt/+archive/refs/heads/master/utils.tar.gz
-          tar -xvf utils.tar.gz mkdtboimg.py
+          wget -q https://android.googlesource.com/platform/system/libufdt/+archive/refs/heads/main/utils.tar.gz
+          tar -xvf utils.tar.gz src/mkdtboimg.py
+          mv src/mkdtboimg.py ./mkdtboimg.py
+          rm -rf src utils.tar.gz
           chmod +x mkdtboimg.py
 
           mkdir -p scripts/dtc/
@@ -43,6 +45,7 @@ jobs:
           cp mkdtboimg.py scripts/mkdtboimg
           
           sudo cp mkdtboimg.py /usr/local/bin/mkdtboimg
+          sudo cp mkdtboimg.py /usr/local/bin/mkdtboimg.py
 
       - name: Скачивание и распаковка Neutron Clang
         run: |
