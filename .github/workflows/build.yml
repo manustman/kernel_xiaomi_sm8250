@@ -57,21 +57,11 @@ jobs:
       - name: Сборка ядра LLVM/Clang Only
         run: |
           export PATH="$(pwd)/clang/bin:$PATH"
-          
+
           MAKE_ARGS=(
             ARCH=arm64
+            SUBARCH=arm64
             CC=clang
-            LD=ld.lld
-            AR=llvm-ar
-            NM=llvm-nm
-            OBJCOPY=llvm-objcopy
-            OBJDUMP=llvm-objdump
-            STRIP=llvm-strip
-            READELF=llvm-readelf
-            OBJSIZE=llvm-size
-            HOSTCC=clang
-            HOSTCXX=clang++
-            HOSTLD=ld.lld
             LLVM=1
             LLVM_IAS=1
           )
