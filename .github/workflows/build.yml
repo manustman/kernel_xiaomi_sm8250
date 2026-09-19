@@ -11,7 +11,7 @@ jobs:
       - name: Клонирование репозитория ядра
         uses: actions/checkout@v7
         with:
-          ref: test
+          ref: backup
           fetch-depth: 0
           submodules: recursive 
           
