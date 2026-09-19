@@ -13,6 +13,7 @@ jobs:
         with:
           ref: test
           fetch-depth: 0
+          submodules: recursive 
           
       - name: Установка необходимых зависимостей
         run: |
