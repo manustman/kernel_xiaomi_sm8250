@@ -12,7 +12,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: test
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: recursive 
           
       - name: Установка необходимых зависимостей
@@ -62,9 +62,12 @@ jobs:
             ARCH=arm64
             SUBARCH=arm64
             CC=clang
+            CLANG_TRIPLE=aarch64-linux-gnu-
+            CROSS_COMPILE=aarch64-linux-gnu-
             LLVM=1
             LLVM_IAS=1
-          )
+            KCONFIG_CONFIG=.config
+            )
 
           make "${MAKE_ARGS[@]}" alioth_defconfig
           make "${MAKE_ARGS[@]}" olddefconfig
