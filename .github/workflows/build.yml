@@ -54,7 +54,7 @@ jobs:
           tar -I zstd -xf clang.tar.zst -C clang
           rm clang.tar.zst
 
-      # 5. Билд ядра
+      # 5. Билд ядра полностью через LLVM/Clang
       - name: Build Kernel
         run: |
           export PATH="$(pwd)/clang/bin:${PATH}"
@@ -63,6 +63,7 @@ jobs:
             ARCH=arm64
             SUBARCH=arm64
             LLVM=1
+            LLVM_IAS=1
             CC=clang
             CLANG_TRIPLE=aarch64-linux-gnu-
             CROSS_COMPILE=aarch64-linux-gnu-
