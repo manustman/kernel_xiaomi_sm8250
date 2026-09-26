@@ -1,0 +1,106 @@
+name: Build Linux Kernel
+
+on:
+  workflow_dispatch:
+  
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      # 1. Фетч репозитория
+      - name: Checkout kernel repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: staging
+          submodules: recursive
+
+      # 2. Скачивание всех необходимых библиотек для Ubuntu 24.04
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            bc \
+            bison \
+            flex \
+            libelf-dev \
+            libssl-dev \
+            libncurses-dev \
+            libsqlite3-dev \
+            zlib1g-dev \
+            liblz4-tool \
+            zstd \
+            lz4 \
+            wget \
+            curl \
+            git \
+            python3 \
+            python3-pip \
+            python-is-python3
+
+      # 3. Симлинки для python и python2 на python3
+      - name: Setup Python symlinks
+        run: |
+          sudo ln -sf $(which python3) /usr/bin/python
+          sudo ln -sf $(which python3) /usr/bin/python2
+
+      # 4. Скачивание и распаковка Neutron Clang
+      - name: Download and extract Neutron Clang
+        run: |
+          mkdir -p clang
+          wget -q https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/06092026/neutron-clang-06092026.tar.zst -O clang.tar.zst
+          tar -I zstd -xf clang.tar.zst -C clang
+          rm clang.tar.zst
+
+      # 5. Билд ядра
+      - name: Build Kernel
+        run: |
+          export PATH="$(pwd)/clang/bin:${PATH}"
+          
+          MAKE_FLAGS=(
+            ARCH=arm64
+            SUBARCH=arm64
+            LLVM=1
+            CC=clang
+            CLANG_TRIPLE=aarch64-linux-gnu-
+            CROSS_COMPILE=aarch64-linux-gnu-
+            CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+            O=out
+          )
+
+          # Применение дефконфига
+          make "${MAKE_FLAGS[@]}" vendor/alioth_defconfig
+          
+          # Применение olddefconfig
+          make "${MAKE_FLAGS[@]}" olddefconfig
+
+          # Сборка целей
+          make -j$(nproc --all) "${MAKE_FLAGS[@]}" Image dtbs dtbo.img
+
+      # 6. Поиск всех .dtb в out и их слияние в один dtb
+      - name: Merge DTB files
+        run: |
+          mkdir -p out/merged
+          find out/arch/arm64/boot/dts/ -type f -name "*.dtb" -exec cat {} + > out/merged/dtb
+
+      # 7. Нахождение Image, dtbo.img и dtb -> перекидывание в одну папку
+      - name: Prepare build output directory
+        run: |
+          mkdir -p kernel_artifacts
+          
+          find out/ -type f -name "Image" -exec cp {} kernel_artifacts/ \;
+          find out/ -type f -name "dtbo.img" -exec cp {} kernel_artifacts/ \;
+
+          if [ -f out/merged/dtb ]; then
+            cp out/merged/dtb kernel_artifacts/
+          fi
+
+      # 8. Отправка папки с артефактами
+      - name: Upload Kernel Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: kernel-build-alioth
+          path: kernel_artifacts/
+          if-no-files-found: error
