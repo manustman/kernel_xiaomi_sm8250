@@ -73,7 +73,7 @@ jobs:
           mkdir -p out
 
           echo "==> Применение defconfig..."
-          make "${MAKE_ARGS[@]}" alioth_defconfig
+          make "${MAKE_ARGS[@]}" vendor/alioth_defconfig
 
           echo "==> Применение olddefconfig..."
           make "${MAKE_ARGS[@]}" olddefconfig
