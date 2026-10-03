@@ -1,0 +1,120 @@
+name: Build Linux Kernel (alioth) 
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_ref:
+        description: 'Git Reference (Branch / Tag / Commit SHA)'
+        required: true
+        default: 'staging'
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-24.04
+
+    steps:
+      # Step 1: Фетч репозитория с установленной глубиной
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.kernel_ref }}
+          fetch-depth: 0
+          submodules: recursive
+
+      # Step 2: Установка всех необходимых зависимостей для Ubuntu 24.04
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc \
+            bison \
+            build-essential \
+            flex \
+            libelf-dev \
+            libssl-dev \
+            libncurses-dev \
+            zstd \
+            tar \
+            wget \
+            git \
+            python3 \
+            python3-pip \
+            python-is-python3 \
+            libzstd-dev \
+            dwarves
+
+      # Step 4: Скачивание и распаковка ZyCromerZ Clang
+      - name: Download and Extract Clang
+        run: |
+          mkdir -p clang
+          wget -q https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20260807-release/Clang-16.0.6-20260807.tar.gz -O clang.tar.gz
+          tar -xzf clang.tar.gz -C clang
+          rm -f clang.tar.gz
+
+      # Step 5: Сборка ядра с использованием CLANG_TRIPLE
+      - name: Build Kernel
+        run: |
+          # Добавляем Clang в PATH относительно рабочей директории
+          export PATH="$(pwd)/clang/bin:$PATH"
+          
+          # Определение флагов сборки (чистый LLVM/Clang + CLANG_TRIPLE)
+          MAKE_ARGS=(
+            ARCH=arm64
+            SUBARCH=arm64
+            CC=clang
+            O=out
+            LLVM=1
+            LLVM_IAS=1
+            CLANG_TRIPLE=aarch64-linux-gnu-
+            CROSS_COMPILE=aarch64-linux-gnu-
+          )
+
+          # Создаем выходную директорию
+          mkdir -p out
+
+          echo "==> Применение defconfig..."
+          make "${MAKE_ARGS[@]}" alioth_defconfig
+
+          echo "==> Применение olddefconfig..."
+          make "${MAKE_ARGS[@]}" olddefconfig
+
+          echo "==> Сборка целей Image, dtbs, dtbo.img..."
+          make "${MAKE_ARGS[@]}" -j$(nproc --all) Image dtbs dtbo.img
+
+      # Step 6: Поиск и объединение всех .dtb файлов
+      - name: Concatenate DTB Files
+        run: |
+          find out/arch/arm64/boot/dts/ -type f -name "*.dtb" > dtb_list.txt
+
+          if [ -s dtb_list.txt ]; then
+            echo "Найдены файлы DTB:"
+            cat dtb_list.txt
+            cat $(cat dtb_list.txt) > out/arch/arm64/boot/dtb
+            echo "Файлы DTB успешно объединены в out/arch/arm64/boot/dtb"
+          else
+            echo "Внимание: .dtb файлы не найдены!"
+          fi
+
+      # Step 7: Подготовка и загрузка артефактов
+      - name: Prepare Artifacts Directory
+        run: |
+          mkdir -p build_artifacts
+
+          if [ -f out/arch/arm64/boot/Image ]; then
+            cp out/arch/arm64/boot/Image build_artifacts/
+          fi
+
+          if [ -f out/arch/arm64/boot/dtbo.img ]; then
+            cp out/arch/arm64/boot/dtbo.img build_artifacts/
+          fi
+
+          if [ -f out/arch/arm64/boot/dtb ]; then
+            cp out/arch/arm64/boot/dtb build_artifacts/
+          fi
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: kernel-alioth-artifacts
+          path: build_artifacts/
+          if-no-files-found: error
