@@ -63,13 +63,10 @@ jobs:
           echo "Clang extracted successfully:"
           ls -la clang/bin/clang
 
-      # Step 5: Сборка ядра с проверкой конфигурации
       - name: Build Kernel
         run: |
-          # Добавляем Clang в PATH относительно рабочей директории
           export PATH="$(pwd)/clang/bin:$PATH"
           
-          # Определение флагов сборки (чистый LLVM/Clang + CLANG_TRIPLE + Имя хоста)
           MAKE_ARGS=(
             ARCH=arm64
             SUBARCH=arm64
@@ -83,7 +80,6 @@ jobs:
             KBUILD_BUILD_HOST="HumanVoid"
           )
           
-          # Создаем выходную директорию
           mkdir -p out
           
           echo "==> Применение defconfig..."
@@ -92,64 +88,58 @@ jobs:
           echo "==> Применение olddefconfig..."
           make "${MAKE_ARGS[@]}" olddefconfig
 
-          # ==========================================
-          # ПРОВЕРКА КОНФИГУРАЦИИ (без остановки сборки)
-          # ==========================================
-          CONFIG_FILE="out/.config"
           echo ""
           echo "=========================================="
           echo "=== Проверка флагов конфигурации ядра ===="
           echo "=========================================="
           
+          CONFIG_FILE="out/.config"
           if [ ! -f "$CONFIG_FILE" ]; then
             echo "❌ ОШИБКА: Файл .config не найден по пути $CONFIG_FILE"
           else
-            read -r -d '' EXPECTED_FLAGS << 'EOF'
-# CONFIG_HZ_100 is not set
-# CONFIG_HZ_250 is not set
-# CONFIG_HZ_1000 is not set
-CONFIG_HZ_300=y
-CONFIG_HZ=300
-CONFIG_KSU=y
-CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
-CONFIG_KSU_FEATURE_SULOG=y
-CONFIG_KSU_FEATURE_ADBROOT=y
-# CONFIG_KSU_THRONE_TRACKER_ALWAYS_THREADED is not set
-CONFIG_KSU_LSM_SECURITY_HOOKS=y
-CONFIG_KSU_HEURISTIC_IN_TREE_BUILD=y
-CONFIG_NOMOUNT=y
-CONFIG_SCHED_CASS=y
-CONFIG_CPUSET_ASSIST=y
-CONFIG_CPUSET_AUDIO_APP="0-3"
-CONFIG_CPUSET_BG="0-3"
-CONFIG_CPUSET_CAMERA="0-7"
-CONFIG_CPUSET_DISPLAY="0-6"
-CONFIG_CPUSET_FG="0-6"
-CONFIG_CPUSET_RESTRICTED="0-3"
-CONFIG_CPUSET_SYSTEM_BG="0-3"
-CONFIG_CPUSET_TOP_APP="0-7"
-CONFIG_UCLAMP_TASK=y
-CONFIG_UCLAMP_BUCKETS_COUNT=20
-CONFIG_UCLAMP_TASK_GROUP=y
-CONFIG_UCLAMP_ASSIST=y
-CONFIG_FAKE_UNAME_5_15=y
-CONFIG_TCP_CONG_ADVANCED=y
-CONFIG_TCP_CONG_BBR=y
-CONFIG_DEFAULT_BBR=y
-CONFIG_DEFAULT_TCP_CONG="bbr"
-EOF
+            # Используем bash-массив для 100% защиты от ошибок парсинга YAML
+            EXPECTED_FLAGS=(
+              "# CONFIG_HZ_100 is not set"
+              "# CONFIG_HZ_250 is not set"
+              "# CONFIG_HZ_1000 is not set"
+              "CONFIG_HZ_300=y"
+              "CONFIG_HZ=300"
+              "CONFIG_KSU=y"
+              "CONFIG_KSU_TAMPER_SYSCALL_TABLE=y"
+              "CONFIG_KSU_FEATURE_SULOG=y"
+              "CONFIG_KSU_FEATURE_ADBROOT=y"
+              "# CONFIG_KSU_THRONE_TRACKER_ALWAYS_THREADED is not set"
+              "CONFIG_KSU_LSM_SECURITY_HOOKS=y"
+              "CONFIG_KSU_HEURISTIC_IN_TREE_BUILD=y"
+              "CONFIG_NOMOUNT=y"
+              "CONFIG_SCHED_CASS=y"
+              "CONFIG_CPUSET_ASSIST=y"
+              "CONFIG_CPUSET_AUDIO_APP=\"0-3\""
+              "CONFIG_CPUSET_BG=\"0-3\""
+              "CONFIG_CPUSET_CAMERA=\"0-7\""
+              "CONFIG_CPUSET_DISPLAY=\"0-6\""
+              "CONFIG_CPUSET_FG=\"0-6\""
+              "CONFIG_CPUSET_RESTRICTED=\"0-3\""
+              "CONFIG_CPUSET_SYSTEM_BG=\"0-3\""
+              "CONFIG_CPUSET_TOP_APP=\"0-7\""
+              "CONFIG_UCLAMP_TASK=y"
+              "CONFIG_UCLAMP_BUCKETS_COUNT=20"
+              "CONFIG_UCLAMP_TASK_GROUP=y"
+              "CONFIG_UCLAMP_ASSIST=y"
+              "CONFIG_FAKE_UNAME_5_15=y"
+              "CONFIG_TCP_CONG_ADVANCED=y"
+              "CONFIG_TCP_CONG_BBR=y"
+              "CONFIG_DEFAULT_BBR=y"
+              "CONFIG_DEFAULT_TCP_CONG=\"bbr\""
+            )
 
-            while IFS= read -r flag; do
-              # Пропускаем пустые строки
-              [ -z "$flag" ] && continue
-              
-              # Используем grep -x для точного совпадения всей строки и -F для фиксированной строки (без regex)
+            for flag in "${EXPECTED_FLAGS[@]}"; do
               if grep -qxF "$flag" "$CONFIG_FILE"; then
                 echo "✅ Присутствует: $flag"
               else
                 echo "❌ Отсутствует : $flag"
               fi
-            done <<< "$EXPECTED_FLAGS"
+            done
           fi
           echo "=========================================="
           echo ""
