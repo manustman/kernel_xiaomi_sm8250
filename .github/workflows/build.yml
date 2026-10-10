@@ -1,0 +1,192 @@
+name: Build Linux Kernel (alioth)
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_ref:
+        description: 'Git Reference (Branch / Tag / Commit SHA)'
+        required: true
+        default: 'lineage-23-ksu'
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-24.04
+    steps:
+      # Step 1: Фетч репозитория с установленной глубиной
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.kernel_ref }}
+          fetch-depth: 0
+          submodules: recursive
+
+      # Step 2: Установка всех необходимых зависимостей для Ubuntu 24.04
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc \
+            bison \
+            build-essential \
+            flex \
+            libelf-dev \
+            libssl-dev \
+            libncurses-dev \
+            zstd \
+            tar \
+            wget \
+            git \
+            python3 \
+            python3-pip \
+            python-is-python3 \
+            libzstd-dev \
+            dwarves
+
+      # Step 3: Симлинки python и python2 на python3
+      - name: Setup Python Symlinks
+        run: |
+          sudo ln -sf $(which python3) /usr/bin/python2
+          echo "Python version check:"
+          python --version
+          python2 --version
+          python3 --version
+
+      # Step 4: Скачивание и распаковка AOSP Clang r614150
+      - name: Download and Extract Clang
+        run: |
+          mkdir -p clang
+          echo "Downloading AOSP Clang r614150..."
+          # Используем +archive для получения tar.gz напрямую из git-дерева AOSP
+          wget -q "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-r614150.tar.gz" -O clang.tar.gz
+          tar -xzf clang.tar.gz -C clang
+          rm -f clang.tar.gz
+          echo "Clang extracted successfully:"
+          ls -la clang/bin/clang
+
+      # Step 5: Сборка ядра с проверкой конфигурации
+      - name: Build Kernel
+        run: |
+          # Добавляем Clang в PATH относительно рабочей директории
+          export PATH="$(pwd)/clang/bin:$PATH"
+          
+          # Определение флагов сборки (чистый LLVM/Clang + CLANG_TRIPLE + Имя хоста)
+          MAKE_ARGS=(
+            ARCH=arm64
+            SUBARCH=arm64
+            CC=clang
+            O=out
+            LLVM=1
+            LLVM_IAS=1
+            CLANG_TRIPLE=aarch64-linux-gnu-
+            CROSS_COMPILE=aarch64-linux-gnu-
+            KBUILD_BUILD_USER="Human"
+            KBUILD_BUILD_HOST="HumanVoid"
+          )
+          
+          # Создаем выходную директорию
+          mkdir -p out
+          
+          echo "==> Применение defconfig..."
+          make "${MAKE_ARGS[@]}" alioth_defconfig
+          
+          echo "==> Применение olddefconfig..."
+          make "${MAKE_ARGS[@]}" olddefconfig
+
+          # ==========================================
+          # ПРОВЕРКА КОНФИГУРАЦИИ (без остановки сборки)
+          # ==========================================
+          CONFIG_FILE="out/.config"
+          echo ""
+          echo "=========================================="
+          echo "=== Проверка флагов конфигурации ядра ===="
+          echo "=========================================="
+          
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "❌ ОШИБКА: Файл .config не найден по пути $CONFIG_FILE"
+          else
+            read -r -d '' EXPECTED_FLAGS << 'EOF'
+# CONFIG_HZ_100 is not set
+# CONFIG_HZ_250 is not set
+# CONFIG_HZ_1000 is not set
+CONFIG_HZ_300=y
+CONFIG_HZ=300
+CONFIG_KSU=y
+CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
+CONFIG_KSU_FEATURE_SULOG=y
+CONFIG_KSU_FEATURE_ADBROOT=y
+# CONFIG_KSU_THRONE_TRACKER_ALWAYS_THREADED is not set
+CONFIG_KSU_LSM_SECURITY_HOOKS=y
+CONFIG_KSU_HEURISTIC_IN_TREE_BUILD=y
+CONFIG_NOMOUNT=y
+CONFIG_SCHED_CASS=y
+CONFIG_CPUSET_ASSIST=y
+CONFIG_CPUSET_AUDIO_APP="0-3"
+CONFIG_CPUSET_BG="0-3"
+CONFIG_CPUSET_CAMERA="0-7"
+CONFIG_CPUSET_DISPLAY="0-6"
+CONFIG_CPUSET_FG="0-6"
+CONFIG_CPUSET_RESTRICTED="0-3"
+CONFIG_CPUSET_SYSTEM_BG="0-3"
+CONFIG_CPUSET_TOP_APP="0-7"
+CONFIG_UCLAMP_TASK=y
+CONFIG_UCLAMP_BUCKETS_COUNT=20
+CONFIG_UCLAMP_TASK_GROUP=y
+CONFIG_UCLAMP_ASSIST=y
+CONFIG_FAKE_UNAME_5_15=y
+CONFIG_TCP_CONG_ADVANCED=y
+CONFIG_TCP_CONG_BBR=y
+CONFIG_DEFAULT_BBR=y
+CONFIG_DEFAULT_TCP_CONG="bbr"
+EOF
+
+            while IFS= read -r flag; do
+              # Пропускаем пустые строки
+              [ -z "$flag" ] && continue
+              
+              # Используем grep -x для точного совпадения всей строки и -F для фиксированной строки (без regex)
+              if grep -qxF "$flag" "$CONFIG_FILE"; then
+                echo "✅ Присутствует: $flag"
+              else
+                echo "❌ Отсутствует : $flag"
+              fi
+            done <<< "$EXPECTED_FLAGS"
+          fi
+          echo "=========================================="
+          echo ""
+
+          echo "==> Сборка целей Image, dtbs, dtbo.img..."
+          make "${MAKE_ARGS[@]}" -j$(nproc --all) Image dtbs dtbo.img
+
+      # Step 6: Поиск и объединение всех .dtb файлов
+      - name: Concatenate DTB Files
+        run: |
+          find out/arch/arm64/boot/dts/ -type f -name "*.dtb" > dtb_list.txt
+          if [ -s dtb_list.txt ]; then
+            echo "Найдены файлы DTB:"
+            cat dtb_list.txt
+            cat $(cat dtb_list.txt) > out/arch/arm64/boot/dtb
+            echo "Файлы DTB успешно объединены в out/arch/arm64/boot/dtb"
+          else
+            echo "Внимание: .dtb файлы не найдены!"
+          fi
+
+      # Step 7: Подготовка и загрузка артефактов
+      - name: Prepare Artifacts Directory
+        run: |
+          mkdir -p build_artifacts
+          if [ -f out/arch/arm64/boot/Image ]; then
+            cp out/arch/arm64/boot/Image build_artifacts/
+          fi
+          if [ -f out/arch/arm64/boot/dtbo.img ]; then
+            cp out/arch/arm64/boot/dtbo.img build_artifacts/
+          fi
+          if [ -f out/arch/arm64/boot/dtb ]; then
+            cp out/arch/arm64/boot/dtb build_artifacts/
+          fi
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: kernel-alioth-artifacts
+          path: build_artifacts/
+          if-no-files-found: error
