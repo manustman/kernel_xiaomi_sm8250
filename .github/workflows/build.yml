@@ -145,9 +145,8 @@ jobs:
           echo ""
 
           echo "==> Сборка целей Image, dtbs, dtbo.img..."
-          make "${MAKE_ARGS[@]}" -j$(nproc --all) Image dtbs dtbo.img
+          make "${MAKE_ARGS[@]}" -j$(nproc --all) Image dtbs
 
-      # Step 6: Поиск и объединение всех .dtb файлов
       - name: Concatenate DTB Files
         run: |
           find out/arch/arm64/boot/dts/ -type f -name "*.dtb" > dtb_list.txt
@@ -160,19 +159,11 @@ jobs:
             echo "Внимание: .dtb файлы не найдены!"
           fi
 
-      # Step 7: Подготовка и загрузка артефактов
       - name: Prepare Artifacts Directory
         run: |
           mkdir -p build_artifacts
-          if [ -f out/arch/arm64/boot/Image ]; then
-            cp out/arch/arm64/boot/Image build_artifacts/
-          fi
-          if [ -f out/arch/arm64/boot/dtbo.img ]; then
-            cp out/arch/arm64/boot/dtbo.img build_artifacts/
-          fi
-          if [ -f out/arch/arm64/boot/dtb ]; then
-            cp out/arch/arm64/boot/dtb build_artifacts/
-          fi
+          [ -f out/arch/arm64/boot/Image ] && cp out/arch/arm64/boot/Image build_artifacts/
+          [ -f out/arch/arm64/boot/dtb ] && cp out/arch/arm64/boot/dtb build_artifacts/
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v7
