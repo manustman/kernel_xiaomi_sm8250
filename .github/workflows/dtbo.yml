@@ -1,0 +1,83 @@
+name: Build DTBO Image Only
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_ref:
+        description: 'Git Reference (Branch / Tag / Commit SHA)'
+        required: true
+        default: 'lineage-23-ksu'
+
+jobs:
+  build-dtbo:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.kernel_ref }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential flex libelf-dev libssl-dev \
+            libncurses-dev zstd tar wget git python3 python3-pip \
+            python-is-python3 libzstd-dev dwarves
+
+      - name: Setup Python Symlinks
+        run: |
+          sudo ln -sf $(which python3) /usr/bin/python2
+          echo "Python version check:"
+          python --version
+          python2 --version
+          python3 --version
+
+      # Step 4: Скачивание и распаковка AOSP Clang r614150
+      - name: Download and Extract Clang
+        run: |
+          mkdir -p clang
+          echo "Downloading AOSP Clang r614150..."
+          # Используем +archive для получения tar.gz напрямую из git-дерева AOSP
+          wget -q "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-r614150.tar.gz" -O clang.tar.gz
+          tar -xzf clang.tar.gz -C clang
+          rm -f clang.tar.gz
+          echo "Clang extracted successfully:"
+          ls -la clang/bin/clang
+
+      - name: Build DTBO
+        run: |
+          export PATH="$(pwd)/clang/bin:$PATH"
+          
+          MAKE_ARGS=(
+            ARCH=arm64
+            SUBARCH=arm64
+            CC=clang
+            O=out
+            LLVM=1
+            LLVM_IAS=1
+            CLANG_TRIPLE=aarch64-linux-gnu-
+            CROSS_COMPILE=aarch64-linux-gnu-
+            KBUILD_BUILD_USER="Human"
+            KBUILD_BUILD_HOST="HumanVoid"
+          )
+          
+          mkdir -p out
+          
+          echo "==> Применение defconfig..."
+          make "${MAKE_ARGS[@]}" alioth_defconfig
+          
+          echo "==> Применение olddefconfig..."
+          make "${MAKE_ARGS[@]}" olddefconfig
+
+          echo "==> Сборка целей dtbs и dtbo.img..."
+          make "${MAKE_ARGS[@]}" -j$(nproc --all) dtbs dtbo.img
+
+      - name: Upload DTBO Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dtbo-img-artifact
+          path: out/arch/arm64/boot/dtbo.img
+          if-no-files-found: error
