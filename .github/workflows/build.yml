@@ -131,6 +131,12 @@ jobs:
               "CONFIG_TCP_CONG_BBR=y"
               "CONFIG_DEFAULT_BBR=y"
               "CONFIG_DEFAULT_TCP_CONG=\"bbr\""
+              "CONFIG_LTO=y"
+              "CONFIG_ARCH_SUPPORTS_LTO_CLANG=y"
+              "CONFIG_ARCH_SUPPORTS_THINLTO=y"
+              "CONFIG_THINLTO=y"
+              "# CONFIG_LTO_NONE is not set"
+              "CONFIG_LTO_CLANG=y"
             )
 
             for flag in "${EXPECTED_FLAGS[@]}"; do
@@ -145,7 +151,7 @@ jobs:
           echo ""
 
           echo "==> Сборка целей Image, dtbs, dtbo.img..."
-          make "${MAKE_ARGS[@]}" -j$(nproc --all) Image dtbs
+          make "${MAKE_ARGS[@]}" -j$(nproc --all) Image dtbs dtbo.img
 
       - name: Concatenate DTB Files
         run: |
@@ -162,8 +168,15 @@ jobs:
       - name: Prepare Artifacts Directory
         run: |
           mkdir -p build_artifacts
-          [ -f out/arch/arm64/boot/Image ] && cp out/arch/arm64/boot/Image build_artifacts/
-          [ -f out/arch/arm64/boot/dtb ] && cp out/arch/arm64/boot/dtb build_artifacts/
+          if [ -f out/arch/arm64/boot/Image ]; then
+            cp out/arch/arm64/boot/Image build_artifacts/
+          fi
+          if [ -f out/arch/arm64/boot/dtbo.img ]; then
+            cp out/arch/arm64/boot/dtbo.img build_artifacts/
+          fi
+          if [ -f out/arch/arm64/boot/dtb ]; then
+            cp out/arch/arm64/boot/dtb build_artifacts/
+          fi
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v7
