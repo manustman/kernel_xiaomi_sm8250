@@ -51,15 +51,14 @@ jobs:
           python2 --version
           python3 --version
 
-      # Step 4: Скачивание и распаковка AOSP Clang r614150
-      - name: Download and Extract Clang
+      # Step 4: Скачивание и распаковка Neutron Clang
+      - name: Download and Extract Neutron Clang
         run: |
           mkdir -p clang
-          echo "Downloading AOSP Clang r614150..."
-          # Используем +archive для получения tar.gz напрямую из git-дерева AOSP
-          wget -q "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-r614150.tar.gz" -O clang.tar.gz
-          tar -xzf clang.tar.gz -C clang
-          rm -f clang.tar.gz
+          echo "Downloading Neutron Clang..."
+          wget -q https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/06092026/neutron-clang-06092026.tar.zst -O clang.tar.zst
+          tar --zstd -xf clang.tar.zst -C clang
+          rm -f clang.tar.zst
           echo "Clang extracted successfully:"
           ls -la clang/bin/clang
 
